@@ -10,6 +10,7 @@ from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
 from YongMingTemplate import ExtractDataForYongMingTemplate
 from MaerskTemplate import ProcessMaerskInvoice
+from EvergreenTemplate import ProcessEvergreenInvoice
 ####################################################################
 ############### Declare Constants ############################
 DownloadDirectory="../Downloads/"
@@ -151,6 +152,30 @@ class InvoiceOCRGVA(Resource):
         if TemplateName=="MaerskTemplate":
             try:
                 response=ProcessMaerskInvoice(ImageList)
+                if response == "invocation error":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to Invoke Google Vision API'}
+                elif response == "missing keywords":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Maersk Invoice.'}
+                elif response == "unable to extract data from Google Vision API":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to extract data from Google Vision API.'}
+                else:
+                    for image in ImageList:
+                        os.remove(image)
+                    return response
+            except:
+                for image in ImageList:
+                    os.remove(image)
+                return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}
+        ############## Evergreen Template #############################
+        if TemplateName=="EvergreenTemplate":
+            try:
+                response=ProcessEvergreenInvoice(ImageList)
                 if response == "invocation error":
                     for image in ImageList:
                         os.remove(image)

@@ -1,5 +1,5 @@
 from pdf2image import convert_from_path
-import random,string,cv2,io,os
+import cv2,io
 from google.cloud import vision
 from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
