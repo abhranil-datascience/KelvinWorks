@@ -1,22 +1,23 @@
 ################### Import Statements #############################
 from flask import Flask, jsonify, request
 from flask_restful import Resource, Api
-import io,os,random,requests,string,fitz
+import io,os,random,requests,string,fitz,cv2
 from PIL import Image
 import pandas as pd
 from google.cloud import vision
 from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
+from pdf2image import convert_from_path
 from YongMingTemplate import ExtractDataForYongMingTemplate
-from CheckTemplateForPDFWithImages import CheckTemplateForPDF
 from MaerskTemplate import ProcessMaerskInvoice
 ####################################################################
 ############### Declare Constants ############################
 DownloadDirectory="../Downloads/"
 ExtractedImageDirectory="../Images/"
 letters = string.ascii_lowercase
-Templates=dict(Template1=['booking ref','nama kapal','etd','eta dest','si no','est.open stack','est.closing time','no.of cntrs','commodity','pol',
-                          'transit port','pod','transit terminal','final dest','kontainer dapat diambil di','approved'])
+Templates=dict(YangMingTemplate=['yang','ming'],
+               MaerskTemplate=['maersk'],
+               EvergreenTemplate=['evergreen'])
 ############## Create Flask App ##############################
 app = Flask(__name__)
 api = Api(app)
@@ -60,6 +61,7 @@ class InvoiceOCRGVA(Resource):
         except:
             return{'msg':'Error','description':'Unable to save downloaded file.'}
         ############## Save Image from Downloaded File ###################
+        ImageList=[]
         if file_type == "png":
             ExtractedImageFilePath=ExtractedImageFileName+".png"
             try:
@@ -69,72 +71,106 @@ class InvoiceOCRGVA(Resource):
                 return{'msg':'Error','description':'Unable to open downloaded file.'}
             try:
                 im.save(ExtractedImageFilePath)
+                ImageList.append(ExtractedImageFilePath)
                 os.remove(DownloadFilePath)
             except:
                 os.remove(DownloadFilePath)
                 return {'msg':'Error','description':'Unable to save image file.'}
         elif file_type == "pdf":
-            ############ Check For Maersk Invoice ####################
-            template=None
-            doc = fitz.open(DownloadFilePath)
-            page = doc[0]
-            text = page.getText().lower()
-            if len(text)!=0 :
-                if "maersk" in text:
-                    template="maersk"
-            else:
-                template=CheckTemplateForPDF(DownloadFilePath)
-            if template=="maersk":
-                try:
-                    MaerskInvoiceResponse = ProcessMaerskInvoice(DownloadFilePath)
-                    if type(MaerskInvoiceResponse) is dict:
-                        return  MaerskInvoiceResponse
-                    else:
-                        return {'msg':'Error','description':MaerskInvoiceResponse}
-                except:
-                    return {'msg':'Error','description':'Unable to perform OCR.'}
-            else:
+            try:
+                print("--------Inside-------------------")
+                images = convert_from_path(DownloadFilePath,dpi=500)
+                print(len(images))
+                for pagenum,image in enumerate(images):
+                    image=image.convert('LA')
+                    ExtractedImageFilePath=ExtractedImageFileName+"_Page"+str(pagenum+1)+".png"
+                    image.save(ExtractedImageFilePath)
+                    ImageList.append(ExtractedImageFilePath)
                 os.remove(DownloadFilePath)
-                return {'msg':'Error','description':'No Matching Template Found for the given PDF'}
+            except:
+                os.remove(DownloadFilePath)
+                return {'msg':'Error','description':'Unable to convert pdf to image.'}
+        else:
+            return {'msg':'Error','description':'Unsupported File Format.'}
         ##### Check and compress File Size #######
-        while os.stat(ExtractedImageFilePath).st_size > 9437184:
-            im = Image.open(ExtractedImageFilePath)
-            im.save(ExtractedImageFilePath,optimize=True,quality=80)
-        ########## Call Google Vision API ########
-        with io.open(ExtractedImageFilePath, 'rb') as gen_image_file:
-            content = gen_image_file.read()
+        for image in ImageList:
+            while os.stat(image).st_size > 9437184:
+                im = Image.open(image)
+                im.save(image,optimize=True,quality=80)
+        ########### Check For Templates ###########
+        FirstImage=ImageList[0]
+        try:
+            with io.open(FirstImage, 'rb') as gen_image_file:
+                content = gen_image_file.read()
+        except:
+            for image in ImageList:
+                os.remove(image)
+            return {'msg':'Error','description':'Unable to read extracted image for template detection.'}
         try:
             client = vision.ImageAnnotatorClient()
             image = vision.types.Image(content=content)
             response = client.text_detection(image=image)
-            os.remove(ExtractedImageFilePath)
         except:
-            os.remove(ExtractedImageFilePath)
+            for image in ImageList:
+                os.remove(image)
             return {'msg':'Error','description':'Unable to invoke Google vision api.'}
         ############ Create Dict for Vision API response ###########
         DictResponse=MessageToDict(response)
-        ########## Check If all words found or not ##################
         WholeContentDescription=DictResponse['textAnnotations'][0]['description'].lower()
-        count=0
-        IdentifiedTemplate=""
-        for template,list_of_words in Templates.items():
-            for unique_words in list_of_words:
-                if unique_words in WholeContentDescription:
-                    count=count+1
-            if count==len(list_of_words):
-                IdentifiedTemplate=template
+        ################# Match Template ############################
+        TemplateName=""
+        for templatename,keywords in Templates.items():
+            matchfound=True
+            for keyword in keywords:
+                if keyword not in WholeContentDescription:
+                    matchfound=False
+            if matchfound:
+                TemplateName=templatename
                 break
-        if IdentifiedTemplate=="":
+        if TemplateName=="":
+            for image in ImageList:
+                os.remove(image)
             return {'msg':'Error','description':'Unable to find a matching Template.'}
-        if IdentifiedTemplate == "Template1":
+        ############## Yang Ming Template #############################
+        if TemplateName=="YangMingTemplate":
             try:
-                WordsAndCoordinates=DictResponse['textAnnotations'][1:]
-                ResponseDict=ExtractDataForYongMingTemplate(WordsAndCoordinates)
+                response=ExtractDataForYongMingTemplate(DictResponse)
+                if response == "missing keywords":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Yang Ming Invoice.'}
+                else:
+                    for image in ImageList:
+                        os.remove(image)
+                    return response
             except:
-                return {'msg':'Error','description':'Unable to process Google Vision API response.'}
-            return ResponseDict
-        else:
-            return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator'}
+                for image in ImageList:
+                    os.remove(image)
+                return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}
+        ############## Maersk Template #############################
+        if TemplateName=="MaerskTemplate":
+            try:
+                response=ProcessMaerskInvoice(ImageList)
+                if response == "invocation error":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to Invoke Google Vision API'}
+                elif response == "missing keywords":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Maersk Invoice.'}
+                elif response == "unable to extract data from Google Vision API":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to extract data from Google Vision API.'}
+                else:
+                    for image in ImageList:
+                        os.remove(image)
+                    return response
+            except:
+                for image in ImageList:
+                    os.remove(image)
+                return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}
 #############################################################
 #################### Configure URLs #########################
 api.add_resource(InvoiceOCRGVA,'/InvoiceOCR')

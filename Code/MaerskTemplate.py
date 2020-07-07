@@ -5,79 +5,76 @@ from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
 import pandas as pd
 
-def ProcessMaerskInvoice(InputFile):
-    ############ declare constants ##################
-    letters = string.ascii_lowercase
-    imagedirectory="../Images/"
-    client = vision.ImageAnnotatorClient()
-    ############ convert pdf to image ##################
-    try:
-        images = convert_from_path(InputFile,dpi=500)
-    except:
-        return "unable to convert pdf to image"
-    ImageFiles=[]
-    try:
-        for image in images:
-            grayscaledimage=image.convert('LA')
-            randomNumber=random.randint(10000,99999)
-            randomAlphabets=''.join(random.choice(letters) for i in range(5))
-            imagename="Image"+str(randomNumber)+randomAlphabets+".png"
-            image_path=imagedirectory+imagename
-            ImageFiles.append(image_path)
-            grayscaledimage.save(image_path)
-    except:
-        os.remove(InputFile)
-        return "unable to convert colored image to grayscaledimage"
-    os.remove(InputFile)
-    ################ Preprocess Image ############################
-    for image in ImageFiles:
+def ProcessMaerskInvoice(ImageList):
+    keywordlist=['no.:','maersk','from:','to:','description:','quantity','itinerary',"size",'sub.','collapsible','gross','equip','pack.','weight','volume','qty/kind','type','release','vessel','voy','etd','eta']
+    ############ Preprocess Image ###########
+
+    for image in ImageList:
         currentImage=cv2.imread(image)
-        currentImage[currentImage>245]=255
+        currentImage[currentImage<10]=0
         currentImage[(currentImage!=0) & (currentImage!=255)]=255
         cv2.imwrite(image,currentImage)
-    ################ Invoke Vision API ############################
+    ################ Invoke Vision API for 2nd page ############################
     try:
-        for count in range(0,len(ImageFiles)-1):
-            currentfile=ImageFiles[count]
-            with io.open(currentfile, 'rb') as gen_image_file:
-                content = gen_image_file.read()
-            image = vision.types.Image(content=content)
-            response = client.text_detection(image=image)
-            DictResponse=MessageToDict(response)
-            WordsAndCoordinates=DictResponse['textAnnotations'][1:]
-            word_list=[]
-            llx_list=[]
-            lly_list=[]
-            lrx_list=[]
-            lry_list=[]
-            urx_list=[]
-            ury_list=[]
-            ulx_list=[]
-            uly_list=[]
-            for i in range(0,len(WordsAndCoordinates)):
-                word_list.append(WordsAndCoordinates[i]['description'])
-                llx_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][0]['x'])
-                lly_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][0]['y'])
-                lrx_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][1]['x'])
-                lry_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][1]['y'])
-                urx_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][2]['x'])
-                ury_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][2]['y'])
-                ulx_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][3]['x'])
-                uly_list.append(WordsAndCoordinates[i]['boundingPoly']['vertices'][3]['y'])
-                ##################### Create Dictionary for the lists #####################
-                WordsAndCoordinatesDict={"Word":word_list,'llx':llx_list,'lly':lly_list,'lrx':lrx_list,'lry':lry_list,'urx':urx_list,'ury':ury_list,'ulx':ulx_list,'uly':uly_list}
-                ####################### Create Dataframe ######################
-                if count==0:
-                    WordsAndCoordinatesDF_Page1 = pd.DataFrame.from_dict(WordsAndCoordinatesDict)
-                elif count==1:
-                    WordsAndCoordinatesDF_Page2 = pd.DataFrame.from_dict(WordsAndCoordinatesDict)
+        for count,image in enumerate(ImageList):
+            if count < 2:
+                currentfile=ImageList[count]
+                with io.open(currentfile, 'rb') as gen_image_file:
+                    content = gen_image_file.read()
+                client = vision.ImageAnnotatorClient()
+                image = vision.types.Image(content=content)
+                response = client.text_detection(image=image)
+                DictResponse=MessageToDict(response)
+                if count == 0:
+                    FirstPageDictResponse=DictResponse
+                else:
+                    SecondPageDictResponse=DictResponse
     except:
-        for image in ImageFiles:
-            os.remove(image)
-        return "unable to invoke Google Vision API"
-    ########### Delete GrayScaled Images ###################
-    for image in ImageFiles:
-        os.remove(image)
+        return "invocation error"
+    ############# Create Message To Dict For 2nd Page ###############
+    SecondPageDictResponse=MessageToDict(response)
+    ############# Check for Keywords ##################
+    WholeContentDescription=FirstPageDictResponse['textAnnotations'][0]['description'].lower()+" "+SecondPageDictResponse['textAnnotations'][0]['description'].lower()
+    match=0
+    for keyword in keywordlist:
+        if keyword in WholeContentDescription:
+            match = match + 1
+        else:
+            print(keyword)
+    if match != len(keywordlist):
+        return "missing keywords"
+    ############# create Dataframes #########################
+    WordsAndCoordinatesPage1=FirstPageDictResponse['textAnnotations'][1:]
+    WordsAndCoordinatesPage2=SecondPageDictResponse['textAnnotations'][1:]
+    WordsAndCoordinates=[WordsAndCoordinatesPage1,WordsAndCoordinatesPage2]
+    for num in range(0,len(WordsAndCoordinates)):
+        currentWordandCoordinate=WordsAndCoordinates[num]
+        word_list=[]
+        llx_list=[]
+        lly_list=[]
+        lrx_list=[]
+        lry_list=[]
+        urx_list=[]
+        ury_list=[]
+        ulx_list=[]
+        uly_list=[]
+        for i in range(0,len(currentWordandCoordinate)):
+            word_list.append(currentWordandCoordinate[i]['description'])
+            llx_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][0]['x'])
+            lly_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][0]['y'])
+            lrx_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][1]['x'])
+            lry_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][1]['y'])
+            urx_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][2]['x'])
+            ury_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][2]['y'])
+            ulx_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][3]['x'])
+            uly_list.append(currentWordandCoordinate[i]['boundingPoly']['vertices'][3]['y'])
+        ##################### Create Dictionary for the lists #####################
+        WordsAndCoordinatesDict={"Word":word_list,'llx':llx_list,'lly':lly_list,'lrx':lrx_list,'lry':lry_list,'urx':urx_list,'ury':ury_list,'ulx':ulx_list,'uly':uly_list}
+        ####################### Create Dataframe ######################
+        if num==0:
+            WordsAndCoordinatesDF_Page1 = pd.DataFrame.from_dict(WordsAndCoordinatesDict)
+        elif num==1:
+            WordsAndCoordinatesDF_Page2 = pd.DataFrame.from_dict(WordsAndCoordinatesDict)
     ###################### Get Values ###########################
     try:
         ############## Booking Number ############################
@@ -90,14 +87,16 @@ def ProcessMaerskInvoice(InputFile):
                                                   (WordsAndCoordinatesDF_Page1['ulx'] > BookingNumber_urx) &
                                                   (WordsAndCoordinatesDF_Page1['urx'] < MeraskSpot_llx)]
         BookingNumber=" ".join(BookingNumber['Word'].values).strip()
+        print(BookingNumber)
         ############## From #############################
-        From_uly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['From:'])]['uly'].values[0]-20
-        From_lly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['From:'])]['lly'].values[0]+20
+        From_uly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['From:'])]['uly'].values[0]-30
+        From_lly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['From:'])]['lly'].values[0]+30
         From_urx=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['From:'])]['urx'].values[0]
         From=WordsAndCoordinatesDF_Page1[(WordsAndCoordinatesDF_Page1['uly']>From_uly) &
                                          (WordsAndCoordinatesDF_Page1['lly']<From_lly) &
                                          (WordsAndCoordinatesDF_Page1['ulx']>From_urx)]
         From=" ".join(From['Word'].values).strip()
+        print(From)
         ################# To #############################
         To_uly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['To:'])]['uly'].values[0]-20
         To_lly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['To:'])]['lly'].values[0]+20
@@ -106,6 +105,7 @@ def ProcessMaerskInvoice(InputFile):
                                        (WordsAndCoordinatesDF_Page1['lly']<To_lly) &
                                        (WordsAndCoordinatesDF_Page1['ulx']>To_urx)]
         To=" ".join(To['Word'].values).strip()
+        print(To)
         ############# Commodity Description ###################
         Description_uly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Description:'])]['uly'].values[0]-20
         Description_lly=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Description:'])]['lly'].values[0]+20
@@ -122,6 +122,7 @@ def ProcessMaerskInvoice(InputFile):
                                              (WordsAndCoordinatesDF_Page1['uly']<Itinerary_ULY) &
                                              (WordsAndCoordinatesDF_Page1['lrx']<Size_LLX)]
         Quantity=" ".join(Quantity['Word'].values).strip()
+        print(Quantity)
         ################ Size ##############################
         Quantity_LLY=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Quantity'])]['lly'].values[0]+20
         Itinerary_ULY=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Itinerary'])]['uly'].values[0]-20
@@ -132,6 +133,7 @@ def ProcessMaerskInvoice(InputFile):
                                          (WordsAndCoordinatesDF_Page1['llx']>Quatity_LRX) &
                                          (WordsAndCoordinatesDF_Page1['lrx']<Sub_LLX)].sort_values(by=['llx'])
         Size=" ".join(Size['Word'].values).strip()
+        print(Size)
         ################ Sub Equipment #####################
         Quantity_LLY=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Quantity'])]['lly'].values[0]+20
         Itinerary_ULY=WordsAndCoordinatesDF_Page1[WordsAndCoordinatesDF_Page1['Word'].isin(['Itinerary'])]['uly'].values[0]-20
@@ -227,7 +229,7 @@ def ProcessMaerskInvoice(InputFile):
                                                      (WordsAndCoordinatesDF_Page2['lly']<max_lly) &
                                                      (WordsAndCoordinatesDF_Page2['llx']>=ETA_llx)]
         TransportPlanETA=" ".join(TransportPlanETA['Word'].values)
-
+        print(TransportPlanETA)
         return dict(msg="Success",BookingNumber=BookingNumber,From=From,To=To,CommodityDescription=CommodityDescription,Quantity=Quantity,Size=Size,
                     SubEquipment=SubEquipment,GrossWeight=GrossWeight,PackQuantity=PackQuantity,CargoVolume=CargoVolume,LoadItineraryType=LoadItineraryType,
                     LoadItineraryLocation=LoadItineraryLocation,TransportPlanVessel=TransportPlanVessel,TransportVoyNumber=TransportVoyNumber,

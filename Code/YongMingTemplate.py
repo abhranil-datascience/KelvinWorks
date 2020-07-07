@@ -1,7 +1,18 @@
 import pandas as pd
 ############### Extract Data For Template Yong Ming #################
-def ExtractDataForYongMingTemplate(WordsAndCoordinates):
+def ExtractDataForYongMingTemplate(DictResponse):
+    keywordlist=['date:','ref:','+++(','kapal:','flag:','etd','eta','dest:','si','stack:','est.closing','time:','no.of','commodity:','pol:',
+                 'port:','pod:','terminal:','dapat','di:','approved','telp:']
+    ######## Check If all Keywords are present #############
+    WholeContentDescription=DictResponse['textAnnotations'][0]['description'].lower()
+    matchcount=0
+    for keyword in keywordlist:
+        if keyword in WholeContentDescription:
+            matchcount=matchcount+1
+    if matchcount != len(keywordlist):
+        return "missing keywords"
     ################ Create Dataframe #######################
+    WordsAndCoordinates=DictResponse['textAnnotations'][1:]
     word_list=[]
     llx_list=[]
     lly_list=[]
@@ -128,8 +139,8 @@ def ExtractDataForYongMingTemplate(WordsAndCoordinates):
     ################ Get Remarks ############################
     uly_POL=WordsAndCoordinatesDF[WordsAndCoordinatesDF['Word'].isin(['POL:'])]['uly'].values[0]
     lly_commodity=WordsAndCoordinatesDF[WordsAndCoordinatesDF['Word'].isin(['COMMODITY:'])]['lly'].values[0]
-    Remarks=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['uly']>lly_commodity+40) &
-                                   (WordsAndCoordinatesDF['lly']<uly_POL-40))]['Word'].values
+    Remarks=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['lly']>lly_commodity+40) &
+                                   (WordsAndCoordinatesDF['uly']<uly_POL-40))]['Word'].values
     Remarks=" ".join(Remarks)
     Remarks=Remarks.replace("Remarks:","")
     ################ Get POL ################################
@@ -171,8 +182,8 @@ def ExtractDataForYongMingTemplate(WordsAndCoordinates):
     ############## Get Final Destination #####################
     uly_DAPAT=WordsAndCoordinatesDF[WordsAndCoordinatesDF['Word'].isin(['DAPAT'])]['uly'].values[0]
     lly_Pod=WordsAndCoordinatesDF[WordsAndCoordinatesDF['Word'].isin(['POD:'])]['lly'].values[0]
-    FinalDestination=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['uly']>lly_Pod+40) &
-                                            (WordsAndCoordinatesDF['lly']<uly_DAPAT-40))]['Word'].values
+    FinalDestination=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['lly']>lly_Pod+40) &
+                                            (WordsAndCoordinatesDF['uly']<uly_DAPAT-40))]['Word'].values
     FinalDestination=" ".join(FinalDestination)
     FinalDestination=FinalDestination.replace("Final Dest:","").strip()
     ############## Get Address ##############################
@@ -185,8 +196,8 @@ def ExtractDataForYongMingTemplate(WordsAndCoordinates):
                                         (WordsAndCoordinatesDF['lly']<lly_DI+20) &
                                         (WordsAndCoordinatesDF['ulx']>urx_DI))]['Word'].values
     AddressLine1=" ".join(AddressLine1)
-    AddressLine2=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['uly']>lly_DI+20) &
-                                        (WordsAndCoordinatesDF['lly']<uly_Telp-20) &
+    AddressLine2=WordsAndCoordinatesDF[((WordsAndCoordinatesDF['lly']>lly_DI+20) &
+                                        (WordsAndCoordinatesDF['uly']<uly_Telp-20) &
                                         (WordsAndCoordinatesDF['urx']<llx_Approved))]['Word'].values
     AddressLine2=" ".join(AddressLine2)
     Address=AddressLine1+" "+AddressLine2
