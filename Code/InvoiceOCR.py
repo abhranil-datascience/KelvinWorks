@@ -183,7 +183,7 @@ class InvoiceOCRGVA(Resource):
                 elif response == "missing keywords":
                     for image in ImageList:
                         os.remove(image)
-                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Maersk Invoice.'}
+                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Evergreen Invoice.'}
                 elif response == "unable to extract data from Google Vision API":
                     for image in ImageList:
                         os.remove(image)
