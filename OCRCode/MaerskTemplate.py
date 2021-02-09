@@ -1,7 +1,10 @@
 from pdf2image import convert_from_path
 import cv2,io
 from google.cloud import vision
-from google.cloud.vision import types
+from google.cloud.vision import Image
+#from google.cloud import vision_v1
+#from google.cloud.vision import types
+#from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
 import pandas as pd
 
@@ -22,9 +25,10 @@ def ProcessMaerskInvoice(ImageList):
                 with io.open(currentfile, 'rb') as gen_image_file:
                     content = gen_image_file.read()
                 client = vision.ImageAnnotatorClient()
-                image = vision.types.Image(content=content)
+                #image = vision.types.Image(content=content)
+                image = vision.Image(content=content)
                 response = client.text_detection(image=image)
-                DictResponse=MessageToDict(response)
+                DictResponse=MessageToDict(response._pb)
                 if count == 0:
                     FirstPageDictResponse=DictResponse
                 else:
@@ -32,7 +36,7 @@ def ProcessMaerskInvoice(ImageList):
     except:
         return "invocation error"
     ############# Create Message To Dict For 2nd Page ###############
-    SecondPageDictResponse=MessageToDict(response)
+    SecondPageDictResponse=MessageToDict(response._pb)
     ############# Check for Keywords ##################
     WholeContentDescription=FirstPageDictResponse['textAnnotations'][0]['description'].lower()+" "+SecondPageDictResponse['textAnnotations'][0]['description'].lower()
     match=0

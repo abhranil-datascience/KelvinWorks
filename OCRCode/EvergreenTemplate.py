@@ -1,6 +1,12 @@
 import cv2,io
+#from google.cloud import vision
+#from google.cloud.vision import types
+#from google.protobuf.json_format import MessageToDict
 from google.cloud import vision
-from google.cloud.vision import types
+from google.cloud.vision import Image
+#from google.cloud import vision_v1
+#from google.cloud.vision import types
+#from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
 import pandas as pd
 
@@ -18,9 +24,10 @@ def ProcessEvergreenInvoice(ImageList):
         with io.open(currentfile, 'rb') as gen_image_file:
             content = gen_image_file.read()
         client = vision.ImageAnnotatorClient()
-        image = vision.types.Image(content=content)
+        #image = vision.types.Image(content=content)
+        image = vision.Image(content=content)
         response = client.text_detection(image=image)
-        DictResponse=MessageToDict(response)
+        DictResponse=MessageToDict(response._pb)
     except:
         return "invocation error"
     ############# Check for Keywords ##################

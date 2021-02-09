@@ -4,13 +4,20 @@ from flask_restful import Resource, Api
 import io,os,random,requests,string,fitz,cv2
 from PIL import Image
 import pandas as pd
+#from google.cloud import vision
+#from google.cloud.vision import types
+#from google.protobuf.json_format import MessageToDict
 from google.cloud import vision
-from google.cloud.vision import types
+from google.cloud.vision import Image
+#from google.cloud import vision_v1
+#from google.cloud.vision import types
+#from google.cloud.vision import types
 from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
 from YongMingTemplate import ExtractDataForYongMingTemplate
 from MaerskTemplate import ProcessMaerskInvoice
 from EvergreenTemplate import ProcessEvergreenInvoice
+from OOCLTemplate import ProcessOOCLInvoice
 ####################################################################
 ############### Declare Constants ############################
 DownloadDirectory="../Downloads/"
@@ -18,7 +25,8 @@ ExtractedImageDirectory="../Images/"
 letters = string.ascii_lowercase
 Templates=dict(YangMingTemplate=['yang','ming'],
                MaerskTemplate=['maersk'],
-               EvergreenTemplate=['evergreen'])
+               EvergreenTemplate=['evergreen'],
+               OOCLTemplate=['oocl'])
 ############## Create Flask App ##############################
 app = Flask(__name__)
 api = Api(app)
@@ -109,14 +117,17 @@ class InvoiceOCRGVA(Resource):
             return {'msg':'Error','description':'Unable to read extracted image for template detection.'}
         try:
             client = vision.ImageAnnotatorClient()
-            image = vision.types.Image(content=content)
+            #image = vision.types.Image(content=content)
+            #image = vision.Image(content=content)
+            image = vision.Image(content=content)
             response = client.text_detection(image=image)
-        except:
+        except Exception as e:
+            print(e)
             for image in ImageList:
                 os.remove(image)
             return {'msg':'Error','description':'Unable to invoke Google vision api.'}
         ############ Create Dict for Vision API response ###########
-        DictResponse=MessageToDict(response)
+        DictResponse=MessageToDict(response._pb)
         WholeContentDescription=DictResponse['textAnnotations'][0]['description'].lower()
         ################# Match Template ############################
         TemplateName=""
@@ -169,6 +180,7 @@ class InvoiceOCRGVA(Resource):
                         os.remove(image)
                     return response
             except:
+                print(e)
                 for image in ImageList:
                     os.remove(image)
                 return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}
@@ -193,6 +205,32 @@ class InvoiceOCRGVA(Resource):
                         os.remove(image)
                     return response
             except:
+                for image in ImageList:
+                    os.remove(image)
+                return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}
+        ################## OOCL Template ##############################
+        if TemplateName == "OOCLTemplate":
+            try:
+                response=ProcessOOCLInvoice(ImageList)
+                if response == "invocation error":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to Invoke Google Vision API'}
+                elif response == "missing keywords":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Google Vision API unable to find all the mandatory keywords for Evergreen Invoice.'}
+                elif response == "unable to extract data from Google Vision API":
+                    for image in ImageList:
+                        os.remove(image)
+                    return {'msg':'Error','description':'Unable to extract data from Google Vision API.'}
+                else:
+                    for image in ImageList:
+                        os.remove(image)
+                    return response
+            except Exception as e:
+                print(e)
+                #raise e
                 for image in ImageList:
                     os.remove(image)
                 return {'msg':'Error','description':'Unknown issue occured. Please connect with system administrator with the input file.'}

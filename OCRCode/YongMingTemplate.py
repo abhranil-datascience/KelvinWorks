@@ -212,8 +212,11 @@ def ExtractDataForYongMingTemplate(DictResponse):
                                      (WordsAndCoordinatesDF['lrx']<llx_Approved))]['Word'].values
     Telephone=" ".join(Telephone)
     ############ Create Dictionary and return ###############
+    responseDict={'msg':"Success",'InvoiceDate ( Booking Date )':InvoiceDate,'BookingReference (DO Number)':BookingRef,'NamaKapal ( Vessel Name )':NamaKapal,'ETD':ETD,'ETA_DEST':ETA,'SI_No':SI,'EST_OPEN_STACK':OpenTime,'EST_CLOSING_TIME':CloseTime,'Qty Container':CNTRS,'COMMODITY':Commodity,'Remarks':Remarks,'POL':Pol,'TransitPort':TransitPort,'POD':Pod,'TransitTerminal':TransitTerminal,
+    'FinalDestination':FinalDestination,'Depo':Address,'Depo TELP':Telephone}
+    """
     response_dict=dict(msg="Success",InvoiceDate=InvoiceDate,BookingReference=BookingRef,NamaKapal=NamaKapal,ETD=ETD,ETA_DEST=ETA,SI_No=SI,
                        EST_OPEN_STACK=OpenTime,EST_CLOSING_TIME=CloseTime,No_of_CNTRS=CNTRS,COMMODITY=Commodity,Remarks=Remarks,POL=Pol,
                        TransitPort=TransitPort,POD=Pod,TransitTerminal=TransitTerminal,FinalDestination=FinalDestination,
-                       KONTAINER_DAPAT_DIAMBIL_DI=Address,TELP=Telephone)
-    return response_dict
+                       KONTAINER_DAPAT_DIAMBIL_DI=Address,TELP=Telephone)"""
+    return responseDict
